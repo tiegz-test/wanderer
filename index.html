@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wanderer</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+
+  <!-- Setup Screen -->
+  <div id="setup-screen" class="screen active">
+    <div class="setup-container">
+      <div class="setup-header">
+        <div class="setup-creature-preview">
+          <div class="preview-body">
+            <div class="preview-eye left"></div>
+            <div class="preview-eye right"></div>
+            <div class="preview-mouth"></div>
+          </div>
+        </div>
+        <h1>Wanderer</h1>
+        <p class="setup-tagline">A tiny creature for your screen. It will wander, wonder, and slowly learn who you are.</p>
+      </div>
+
+      <div class="setup-steps">
+        <!-- Step 1: Choose habitat -->
+        <div class="setup-step" id="step-habitat">
+          <h2>Where should it live?</h2>
+          <div class="habitat-grid" id="habitat-grid">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+
+        <!-- Step 2: Name & API key -->
+        <div class="setup-step" id="step-details">
+          <h2>One more thing</h2>
+          <div class="setup-fields">
+            <div class="field-group">
+              <label for="creature-name">Name your creature <span class="optional">(optional)</span></label>
+              <input type="text" id="creature-name" placeholder="Leave blank for a surprise..." maxlength="20" />
+            </div>
+            <div class="field-group">
+              <label for="api-key">Anthropic API Key <a href="https://console.anthropic.com/account/keys" target="_blank" class="link">↗</a></label>
+              <input type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off" />
+              <span class="field-hint">Stored only in your browser. Never sent anywhere except Anthropic.</span>
+            </div>
+          </div>
+          <button class="btn-primary" id="begin-btn">Begin →</button>
+          <p class="setup-error" id="setup-error"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="game-screen" class="screen">
+    <!-- Habitat background with particles -->
+    <div id="habitat-bg" class="habitat-bg">
+      <div id="particles" class="particles"></div>
+    </div>
+
+    <!-- Creature -->
+    <div id="creature" class="creature idle">
+      <div class="creature-shadow"></div>
+      <div class="creature-body">
+        <div class="creature-fluff left-fluff"></div>
+        <div class="creature-fluff right-fluff"></div>
+        <div class="creature-eyes">
+          <div class="creature-eye left-eye">
+            <div class="pupil"></div>
+          </div>
+          <div class="creature-eye right-eye">
+            <div class="pupil"></div>
+          </div>
+        </div>
+        <div class="creature-mouth neutral"></div>
+        <div class="creature-blush left-blush"></div>
+        <div class="creature-blush right-blush"></div>
+      </div>
+    </div>
+
+    <!-- Speech Bubble -->
+    <div id="speech-bubble" class="speech-bubble hidden">
+      <div class="bubble-tail"></div>
+      <div class="bubble-content">
+        <p id="bubble-text" class="bubble-text"></p>
+        <div id="bubble-input-area" class="bubble-input-area hidden">
+          <textarea id="bubble-input" class="bubble-input" placeholder="type anything..." rows="2" maxlength="300"></textarea>
+          <div class="bubble-actions">
+            <button id="bubble-skip" class="btn-bubble-skip">skip</button>
+            <button id="bubble-submit" class="btn-bubble-submit">tell it →</button>
+          </div>
+        </div>
+        <div id="bubble-reaction" class="bubble-reaction hidden"></div>
+      </div>
+    </div>
+
+    <!-- HUD -->
+    <div class="hud">
+      <div class="hud-name" id="hud-name"></div>
+      <div class="hud-traits" id="hud-traits" title="Personality traits">
+        <div class="trait-orb" id="trait-curiosity" data-label="curiosity"></div>
+        <div class="trait-orb" id="trait-warmth" data-label="warmth"></div>
+        <div class="trait-orb" id="trait-energy" data-label="energy"></div>
+        <div class="trait-orb" id="trait-openness" data-label="openness"></div>
+        <div class="trait-orb" id="trait-creativity" data-label="creativity"></div>
+      </div>
+    </div>
+
+    <!-- Settings / Info button -->
+    <button class="hud-settings" id="settings-btn" title="Settings">⚙</button>
+
+    <!-- Info panel -->
+    <div class="info-panel hidden" id="info-panel">
+      <h3>About your wanderer</h3>
+      <div id="info-content"></div>
+      <div class="info-actions">
+        <button class="btn-danger-sm" id="reset-btn">Start over</button>
+        <button class="btn-sm" id="close-info-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
