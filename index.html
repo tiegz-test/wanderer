@@ -87,9 +87,16 @@
         <p id="bubble-text" class="bubble-text"></p>
         <div id="bubble-input-area" class="bubble-input-area hidden">
           <textarea id="bubble-input" class="bubble-input" placeholder="type anything..." rows="2" maxlength="300"></textarea>
-          <div class="bubble-actions">
+          <div class="bubble-actions" id="bubble-actions-normal">
             <button id="bubble-skip" class="btn-bubble-skip">skip</button>
-            <button id="bubble-submit" class="btn-bubble-submit">tell it →</button>
+            <button id="bubble-mic" class="btn-bubble-mic" title="Speak your answer">&#127908;</button>
+            <button id="bubble-submit" class="btn-bubble-submit">tell it &#8594;</button>
+          </div>
+          <div class="bubble-actions hidden" id="bubble-actions-recording">
+            <span class="recording-indicator">
+              <span class="recording-dot"></span>recording
+            </span>
+            <button id="bubble-mic-stop" class="btn-bubble-mic-stop" title="Stop recording">&#10005;</button>
           </div>
         </div>
         <div id="bubble-reaction" class="bubble-reaction hidden"></div>
