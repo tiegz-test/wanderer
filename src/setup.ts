@@ -39,11 +39,11 @@ export function initSetupScreen(onComplete: (habitatId: string, creatureName: st
       return
     }
     if (!apiKey) {
-      showError(errorEl, 'Please enter your Anthropic API key.')
+      showError(errorEl, 'Please enter your Google Gemini API key.')
       return
     }
-    if (!apiKey.startsWith('sk-ant-')) {
-      showError(errorEl, 'That doesn\'t look like an Anthropic API key (should start with sk-ant-).')
+    if (!apiKey.startsWith('AIza')) {
+      showError(errorEl, 'That doesn\'t look like a Google Gemini API key (should start with AIza).')
       return
     }
 

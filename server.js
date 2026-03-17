@@ -1,6 +1,6 @@
 import express from 'express'
 import cors from 'cors'
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const app = express()
 app.use(express.json())
@@ -35,12 +35,23 @@ ${factsText || '(nothing yet — you just arrived!)'}
 You communicate in short, warm, slightly whimsical bursts. You are genuinely curious and caring. You speak in first person as the creature.`
 }
 
+async function callGemini(apiKey, systemPrompt, userMessage, maxTokens) {
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    systemInstruction: systemPrompt,
+  })
+  const result = await model.generateContent({
+    contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+    generationConfig: { maxOutputTokens: maxTokens },
+  })
+  return result.response.text().trim()
+}
+
 // Generate a question for the creature to ask
 app.post('/api/question', async (req, res) => {
   const { apiKey, personality, habitat, recentHistory } = req.body
   if (!apiKey) return res.status(400).json({ error: 'API key required' })
-
-  const client = new Anthropic({ apiKey })
 
   const historyText = recentHistory?.length
     ? recentHistory.slice(-5).map(h => `Q: ${h.question}\nA: ${h.answer}`).join('\n\n')
@@ -62,13 +73,10 @@ app.post('/api/question', async (req, res) => {
   }
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 80,
-      system: buildSystemPrompt(personality, habitat),
-      messages: [{
-        role: 'user',
-        content: `Generate ONE question to ask the person watching you.
+    const text = await callGemini(
+      apiKey,
+      buildSystemPrompt(personality, habitat),
+      `Generate ONE question to ask the person watching you.
 
 Recent conversation:
 ${historyText}
@@ -82,11 +90,9 @@ Rules:
 - Maximum 25 words
 - Warm, curious, slightly whimsical tone
 - Build naturally on your knowledge of them
-- Reply with ONLY the question, nothing else`
-      }]
-    })
-
-    const text = response.content.find(b => b.type === 'text')?.text?.trim() || ''
+- Reply with ONLY the question, nothing else`,
+      80
+    )
     res.json({ text })
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -98,16 +104,11 @@ app.post('/api/react', async (req, res) => {
   const { apiKey, personality, habitat, question, answer } = req.body
   if (!apiKey) return res.status(400).json({ error: 'API key required' })
 
-  const client = new Anthropic({ apiKey })
-
   try {
-    const response = await client.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 80,
-      system: buildSystemPrompt(personality, habitat),
-      messages: [{
-        role: 'user',
-        content: `You just asked: "${question}"
+    const text = await callGemini(
+      apiKey,
+      buildSystemPrompt(personality, habitat),
+      `You just asked: "${question}"
 The person answered: "${answer}"
 
 Write a SHORT reaction (1-2 sentences, max 30 words) that:
@@ -116,11 +117,9 @@ Write a SHORT reaction (1-2 sentences, max 30 words) that:
 - Does NOT ask another question
 - Feels natural and alive, not robotic
 
-Reply with ONLY the reaction.`
-      }]
-    })
-
-    const text = response.content.find(b => b.type === 'text')?.text?.trim() || ''
+Reply with ONLY the reaction.`,
+      80
+    )
     res.json({ text })
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -132,27 +131,20 @@ app.post('/api/thought', async (req, res) => {
   const { apiKey, personality, habitat } = req.body
   if (!apiKey) return res.status(400).json({ error: 'API key required' })
 
-  const client = new Anthropic({ apiKey })
-
   try {
-    const response = await client.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 50,
-      system: buildSystemPrompt(personality, habitat),
-      messages: [{
-        role: 'user',
-        content: `You are wandering around your ${habitat.name} habitat, thinking to yourself.
+    const text = await callGemini(
+      apiKey,
+      buildSystemPrompt(personality, habitat),
+      `You are wandering around your ${habitat.name} habitat, thinking to yourself.
 
 Write ONE brief thought (under 18 words) that:
 - Reflects on your habitat, something you noticed, or something you remember about the person
 - Is whimsical, poetic, or curious
 - Feels like a passing thought, not a question
 
-Reply with ONLY the thought.`
-      }]
-    })
-
-    const text = response.content.find(b => b.type === 'text')?.text?.trim() || ''
+Reply with ONLY the thought.`,
+      50
+    )
     res.json({ text })
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -161,18 +153,14 @@ Reply with ONLY the thought.`
 
 // Extract personality updates from an answer
 app.post('/api/extract', async (req, res) => {
-  const { apiKey, question, answer, currentFacts } = req.body
+  const { apiKey, question, answer } = req.body
   if (!apiKey) return res.status(400).json({ error: 'API key required' })
 
-  const client = new Anthropic({ apiKey })
-
   try {
-    const response = await client.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 200,
-      messages: [{
-        role: 'user',
-        content: `Extract factual information from this Q&A exchange.
+    const text = await callGemini(
+      apiKey,
+      'You are a precise data extractor. Return only valid JSON with no markdown or extra text.',
+      `Extract factual information from this Q&A exchange.
 
 Question: "${question}"
 Answer: "${answer}"
@@ -197,13 +185,13 @@ Return a JSON object with any of these fields that are clearly present in the an
 }
 
 For traitDeltas, use -5 to +5 based on what their answer reveals about personality.
-Reply with ONLY valid JSON, nothing else.`
-      }]
-    })
-
-    const text = response.content.find(b => b.type === 'text')?.text?.trim() || '{}'
+Reply with ONLY valid JSON, nothing else.`,
+      200
+    )
     try {
-      const data = JSON.parse(text)
+      // Strip markdown code fences if Gemini adds them
+      const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+      const data = JSON.parse(cleaned)
       res.json(data)
     } catch {
       res.json({})
