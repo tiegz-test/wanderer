@@ -180,3 +180,29 @@ Reply with ONLY valid JSON, nothing else.`,
     return {}
   }
 }
+
+export async function transcribeAudio(apiKey: string, audioBlob: Blob): Promise<string> {
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      resolve(dataUrl.split(',')[1])
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(audioBlob)
+  })
+
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const result = await model.generateContent({
+    contents: [{
+      role: 'user',
+      parts: [
+        { inlineData: { mimeType: 'audio/webm', data: base64 } },
+        { text: 'Transcribe this audio exactly as spoken. Return only the spoken words, nothing else.' },
+      ],
+    }],
+    generationConfig: { maxOutputTokens: 300 },
+  })
+  return result.response.text().trim()
+}

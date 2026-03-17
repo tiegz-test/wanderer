@@ -1,6 +1,6 @@
 import type { PersonalityData, Position, CreatureState, MouthState, Habitat } from './types'
 import { savePersonality, addInteraction, applyExtractedFacts, traitDescription } from './personality'
-import { generateQuestion, generateReaction, generateThought, extractFacts } from './claude'
+import { generateQuestion, generateReaction, generateThought, extractFacts, transcribeAudio } from './claude'
 import { getHabitat } from './habitats'
 
 const WANDER_INTERVAL_MS   = [3000, 7000]   // how often creature picks new wander target
@@ -26,6 +26,10 @@ export class Game {
   private bubbleInputEl: HTMLTextAreaElement
   private bubbleSubmitBtn: HTMLButtonElement
   private bubbleSkipBtn: HTMLButtonElement
+  private bubbleMicBtn: HTMLButtonElement
+  private bubbleMicStopBtn: HTMLButtonElement
+  private bubbleActionsNormalEl: HTMLElement
+  private bubbleActionsRecordingEl: HTMLElement
   private bubbleReactionEl: HTMLElement
   private bubbleTailEl: HTMLElement
   private hudNameEl: HTMLElement
@@ -42,6 +46,9 @@ export class Game {
   private questionTimer: ReturnType<typeof setTimeout> | null = null
   private thoughtTimer: ReturnType<typeof setTimeout> | null = null
   private isBusy = false
+  private mediaRecorder: MediaRecorder | null = null
+  private audioChunks: Blob[] = []
+  private isRecording = false
 
   constructor(personality: PersonalityData, apiKey: string) {
     this.personality = personality
@@ -58,8 +65,12 @@ export class Game {
     this.bubbleInputAreaEl = document.getElementById('bubble-input-area')!
     this.bubbleInputEl    = document.getElementById('bubble-input') as HTMLTextAreaElement
     this.bubbleSubmitBtn  = document.getElementById('bubble-submit') as HTMLButtonElement
-    this.bubbleSkipBtn    = document.getElementById('bubble-skip') as HTMLButtonElement
-    this.bubbleReactionEl = document.getElementById('bubble-reaction')!
+    this.bubbleSkipBtn            = document.getElementById('bubble-skip') as HTMLButtonElement
+    this.bubbleMicBtn             = document.getElementById('bubble-mic') as HTMLButtonElement
+    this.bubbleMicStopBtn         = document.getElementById('bubble-mic-stop') as HTMLButtonElement
+    this.bubbleActionsNormalEl    = document.getElementById('bubble-actions-normal')!
+    this.bubbleActionsRecordingEl = document.getElementById('bubble-actions-recording')!
+    this.bubbleReactionEl         = document.getElementById('bubble-reaction')!
     this.bubbleTailEl     = this.bubbleEl.querySelector('.bubble-tail')!
     this.hudNameEl        = document.getElementById('hud-name')!
     this.hudAgeEl         = document.getElementById('hud-age')!
@@ -78,6 +89,8 @@ export class Game {
     // Wire up buttons
     this.bubbleSubmitBtn.addEventListener('click', () => this.submitAnswer())
     this.bubbleSkipBtn.addEventListener('click', () => this.skipQuestion())
+    this.bubbleMicBtn.addEventListener('click', () => this.startRecording())
+    this.bubbleMicStopBtn.addEventListener('click', () => this.stopRecording())
     this.bubbleInputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
@@ -349,10 +362,85 @@ export class Game {
   }
 
   skipQuestion(): void {
+    if (this.isRecording) {
+      this.mediaRecorder?.stream.getTracks().forEach(t => t.stop())
+      this.mediaRecorder?.stop()
+      this.isRecording = false
+    }
+    this.resetRecordingUI()
     this.hideBubble()
     this.setState('wandering')
     this.setMouth('neutral')
     this.isBusy = false
+  }
+
+  private async startRecording(): Promise<void> {
+    if (!window.MediaRecorder) {
+      this.showError(new Error('Your browser does not support audio recording.'))
+      return
+    }
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch {
+      this.showError(new Error('Microphone access denied. Please allow mic access and try again.'))
+      return
+    }
+    this.audioChunks = []
+    this.isRecording = true
+    this.bubbleActionsNormalEl.classList.add('hidden')
+    this.bubbleActionsRecordingEl.classList.remove('hidden')
+    this.bubbleInputEl.disabled = true
+
+    this.mediaRecorder = new MediaRecorder(stream)
+    this.mediaRecorder.addEventListener('dataavailable', (e: BlobEvent) => {
+      if (e.data.size > 0) this.audioChunks.push(e.data)
+    })
+    this.mediaRecorder.start()
+  }
+
+  private async stopRecording(): Promise<void> {
+    if (!this.mediaRecorder || !this.isRecording) return
+
+    this.mediaRecorder.stream.getTracks().forEach(t => t.stop())
+    await new Promise<void>(resolve => {
+      this.mediaRecorder!.addEventListener('stop', () => resolve(), { once: true })
+      this.mediaRecorder!.stop()
+    })
+    this.isRecording = false
+
+    if (this.audioChunks.length === 0) {
+      this.resetRecordingUI()
+      this.showError(new Error('No audio was recorded. Please try again.'))
+      return
+    }
+
+    const spinner = document.createElement('div')
+    spinner.id = 'mic-transcribing-spinner'
+    spinner.className = 'mic-transcribing-spinner'
+    spinner.innerHTML = '<div class="thinking-dots"><span></span><span></span><span></span></div>'
+    this.bubbleInputAreaEl.appendChild(spinner)
+
+    const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' })
+    try {
+      const text = await transcribeAudio(this.apiKey, audioBlob)
+      this.bubbleInputEl.value = text
+    } catch (err) {
+      this.showError(err)
+    }
+
+    this.resetRecordingUI()
+    this.bubbleInputEl.focus()
+  }
+
+  private resetRecordingUI(): void {
+    document.getElementById('mic-transcribing-spinner')?.remove()
+    this.bubbleActionsRecordingEl.classList.add('hidden')
+    this.bubbleActionsNormalEl.classList.remove('hidden')
+    this.bubbleInputEl.disabled = false
+    this.bubbleInputEl.placeholder = 'type anything...'
+    this.mediaRecorder = null
+    this.audioChunks = []
   }
 
   private async showThought(): Promise<void> {
