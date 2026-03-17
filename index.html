@@ -125,6 +125,20 @@
     </div>
   </div>
 
+  <div id="global-error" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(10,0,0,0.92);color:#f87171;font-family:monospace;font-size:13px;padding:32px;white-space:pre-wrap;overflow:auto;"></div>
+  <script>
+    function showGlobalError(msg) {
+      var el = document.getElementById('global-error')
+      el.textContent = '⚠ JavaScript error — check your browser console for details:\n\n' + msg
+      el.style.display = 'block'
+    }
+    window.onerror = function(msg, src, line, col, err) {
+      showGlobalError((err ? err.stack : null) || (msg + ' (' + src + ':' + line + ':' + col + ')'))
+    }
+    window.onunhandledrejection = function(e) {
+      showGlobalError(e.reason instanceof Error ? e.reason.stack : String(e.reason))
+    }
+  </script>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
