@@ -29,6 +29,8 @@ export class Game {
   private bubbleReactionEl: HTMLElement
   private bubbleTailEl: HTMLElement
   private hudNameEl: HTMLElement
+  private hudAgeEl: HTMLElement
+  private ageInterval: ReturnType<typeof setInterval> | null = null
   private errorToastEl: HTMLElement
   private errorToastTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -60,6 +62,7 @@ export class Game {
     this.bubbleReactionEl = document.getElementById('bubble-reaction')!
     this.bubbleTailEl     = this.bubbleEl.querySelector('.bubble-tail')!
     this.hudNameEl        = document.getElementById('hud-name')!
+    this.hudAgeEl         = document.getElementById('hud-age')!
     this.errorToastEl     = document.getElementById('error-toast')!
   }
 
@@ -91,12 +94,14 @@ export class Game {
     this.scheduleWander()
     this.scheduleQuestion()
     this.scheduleThought()
+    this.ageInterval = setInterval(() => this.updateHUD(), 60_000)
   }
 
   stop(): void {
     if (this.wanderTimer)   clearTimeout(this.wanderTimer)
     if (this.questionTimer) clearTimeout(this.questionTimer)
     if (this.thoughtTimer)  clearTimeout(this.thoughtTimer)
+    if (this.ageInterval)   clearInterval(this.ageInterval)
   }
 
   private applyHabitatTheme(): void {
@@ -388,6 +393,7 @@ export class Game {
 
   private updateHUD(): void {
     this.hudNameEl.textContent = this.personality.creatureName
+    this.hudAgeEl.textContent  = formatAge(this.personality.createdAt)
 
     const traits = this.personality.traits
     const traitKeys = ['curiosity', 'warmth', 'energy', 'openness', 'creativity'] as const
@@ -447,4 +453,19 @@ export class Game {
 
 function rand(min: number, max: number): number {
   return min + Math.random() * (max - min)
+}
+
+function formatAge(createdAt: number): string {
+  const ms = Date.now() - createdAt
+  const minutes = Math.floor(ms / 60_000)
+  const hours   = Math.floor(ms / 3_600_000)
+  const days    = Math.floor(ms / 86_400_000)
+  const months  = Math.floor(days / 30.44)
+  const years   = Math.floor(days / 365.25)
+
+  if (minutes < 60)  return `${minutes}m old`
+  if (hours   < 24)  return `${hours}h old`
+  if (days    < 30)  return `${days}d old`
+  if (months  < 12)  return `${months}mo old`
+  return `${years}y old`
 }
