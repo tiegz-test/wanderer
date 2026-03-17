@@ -29,6 +29,8 @@ export class Game {
   private bubbleReactionEl: HTMLElement
   private bubbleTailEl: HTMLElement
   private hudNameEl: HTMLElement
+  private errorToastEl: HTMLElement
+  private errorToastTimer: ReturnType<typeof setTimeout> | null = null
 
   // State
   private state: CreatureState = 'wandering'
@@ -58,6 +60,7 @@ export class Game {
     this.bubbleReactionEl = document.getElementById('bubble-reaction')!
     this.bubbleTailEl     = this.bubbleEl.querySelector('.bubble-tail')!
     this.hudNameEl        = document.getElementById('hud-name')!
+    this.errorToastEl     = document.getElementById('error-toast')!
   }
 
   start(): void {
@@ -280,7 +283,7 @@ export class Game {
     try {
       question = await generateQuestion(this.apiKey, this.personality, this.habitat)
     } catch (err) {
-      console.error('Failed to generate question:', err)
+      this.showError(err)
       this.hideBubble()
       this.setState('wandering')
       this.isBusy = false
@@ -328,7 +331,7 @@ export class Game {
       this.setMouth('happy')
       this.bubbleReactionEl.textContent = reaction
     } catch (err) {
-      console.error('Reaction/extract failed:', err)
+      this.showError(err)
       this.bubbleReactionEl.textContent = '...'
     }
 
@@ -355,7 +358,8 @@ export class Game {
     let thought: string
     try {
       thought = await generateThought(this.apiKey, this.personality, this.habitat)
-    } catch {
+    } catch (err) {
+      this.showError(err)
       this.setState('wandering')
       this.isBusy = false
       return
@@ -428,6 +432,16 @@ export class Game {
 
   hideInfoPanel(): void {
     document.getElementById('info-panel')!.classList.add('hidden')
+  }
+
+  private showError(err: unknown): void {
+    const msg = err instanceof Error ? err.message : String(err)
+    this.errorToastEl.textContent = `⚠ ${msg}`
+    this.errorToastEl.classList.remove('hidden')
+    if (this.errorToastTimer) clearTimeout(this.errorToastTimer)
+    this.errorToastTimer = setTimeout(() => {
+      this.errorToastEl.classList.add('hidden')
+    }, 6000)
   }
 }
 
