@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import type { PersonalityData, Habitat, ExtractedFacts } from './types'
+import type { PersonalityData, Habitat, ExtractedFacts, QuizProgress, QuizQuestion } from './types'
 
 function buildSystemPrompt(personality: PersonalityData, habitat: Habitat): string {
   const traitSummary = (Object.entries(personality.traits) as [string, number][])
@@ -179,6 +179,57 @@ Reply with ONLY valid JSON, nothing else.`,
   } catch {
     return {}
   }
+}
+
+export async function generateQuizQuestion(
+  apiKey: string,
+  quizProgress: QuizProgress
+): Promise<QuizQuestion> {
+  const progressSummary = Object.entries(quizProgress)
+    .map(([char, rec]) => `${char}: ${rec.correct}✓ ${rec.wrong}✗`)
+    .join(', ') || 'none yet'
+
+  const totalAttempts = Object.values(quizProgress)
+    .reduce((n, r) => n + r.correct + r.wrong, 0)
+
+  const text = await callGemini(
+    apiKey,
+    `You are a Japanese language quiz engine. Return ONLY valid JSON, no markdown, no extra text.`,
+    `Pick ONE Japanese character to quiz the user on.
+
+User's quiz history: ${progressSummary}
+Total attempts: ${totalAttempts}
+
+Rules:
+- Under 20 total attempts: hiragana ONLY (あいうえお etc.)
+- 20+ attempts: may introduce kanji if hiragana accuracy > 70%
+- Prioritize characters with high wrong counts (needs practice)
+- Occasionally re-test characters the user has got right (spaced repetition)
+- Introduce unseen characters regularly
+
+Return JSON matching this shape exactly:
+{
+  "character": "あ",
+  "reading": "a",
+  "correctAnswer": "a",
+  "distractors": ["ka", "mi", "tsu"],
+  "promptType": "reading",
+  "characterType": "hiragana"
+}
+
+- promptType "reading": correctAnswer/distractors are romaji sounds (for hiragana/katakana)
+- promptType "meaning": correctAnswer/distractors are English meanings (for kanji)
+- Distractors must be plausible but clearly wrong
+- Reply with ONLY the JSON object, nothing else.`,
+    220
+  )
+
+  const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+  const parsed = JSON.parse(cleaned) as QuizQuestion
+  if (!parsed.character || !parsed.correctAnswer || !Array.isArray(parsed.distractors)) {
+    throw new Error('Quiz question from AI was malformed')
+  }
+  return parsed
 }
 
 export async function transcribeAudio(apiKey: string, audioBlob: Blob): Promise<string> {

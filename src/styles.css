@@ -688,6 +688,87 @@ h1 {
 }
 .error-toast.hidden { opacity: 0; pointer-events: none; }
 
+/* ─── Quiz Answer Bubbles ───────────────────────────────────────────────── */
+
+.quiz-bubbles {
+  position: fixed; inset: 0;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.quiz-bubble {
+  position: absolute;
+  pointer-events: all;
+  padding: 10px 22px;
+  background: var(--bubble-bg);
+  border: 2px solid rgba(124,58,237,0.3);
+  border-radius: 999px;
+  box-shadow: var(--bubble-shadow);
+  font-family: var(--font);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease, opacity 0.3s ease;
+  animation: quiz-float 3s ease-in-out infinite;
+}
+.quiz-bubble:hover:not(:disabled) {
+  transform: translateY(-4px) scale(1.06);
+  border-color: rgba(124,58,237,0.7);
+}
+.quiz-bubble:disabled { cursor: default; }
+
+.quiz-bubble--correct {
+  background: rgba(34,197,94,0.2) !important;
+  border-color: #22c55e !important;
+  color: #166534 !important;
+  animation: none;
+}
+.quiz-bubble--wrong {
+  background: rgba(239,68,68,0.15) !important;
+  border-color: #ef4444 !important;
+  color: #991b1b !important;
+  animation: quiz-shake 0.4s ease !important;
+}
+.quiz-bubble--dismissed {
+  opacity: 0;
+  transform: scale(0.85) translateY(8px);
+  pointer-events: none;
+}
+
+@keyframes quiz-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}
+@keyframes quiz-shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-8px) rotate(-2deg); }
+  40%       { transform: translateX(8px) rotate(2deg); }
+  60%       { transform: translateX(-5px); }
+  80%       { transform: translateX(5px); }
+}
+
+.quiz-character {
+  display: block;
+  font-size: 3.5rem;
+  line-height: 1.1;
+  text-align: center;
+  font-weight: 700;
+  font-family: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+  margin-bottom: 6px;
+  color: #1a1a1a;
+}
+.quiz-prompt {
+  display: block;
+  text-align: center;
+  font-size: 0.82rem;
+  color: #666;
+  font-style: italic;
+}
+.quiz-prompt--success { color: #166534; font-style: normal; font-weight: 600; }
+.quiz-prompt--fail    { color: #991b1b; font-style: normal; }
+
 /* ─── HUD ──────────────────────────────────────────────────────────────── */
 .hud {
   position: fixed;

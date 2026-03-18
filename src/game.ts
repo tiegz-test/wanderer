@@ -1,13 +1,16 @@
-import type { PersonalityData, Position, CreatureState, MouthState, Habitat } from './types'
-import { savePersonality, addInteraction, applyExtractedFacts, traitDescription } from './personality'
-import { generateQuestion, generateReaction, generateThought, extractFacts, transcribeAudio } from './claude'
+import type { PersonalityData, Position, CreatureState, MouthState, Habitat, QuizQuestion } from './types'
+import { savePersonality, addInteraction, applyExtractedFacts, traitDescription, recordQuizAnswer } from './personality'
+import { generateQuestion, generateReaction, generateThought, extractFacts, transcribeAudio, generateQuizQuestion } from './claude'
 import { getHabitat } from './habitats'
 
-const WANDER_INTERVAL_MS   = [3000, 7000]   // how often creature picks new wander target
-const QUESTION_INTERVAL_MS = [45000, 90000] // how often it asks a question
+const WANDER_INTERVAL_MS   = [3000, 7000]    // how often creature picks new wander target
+const QUESTION_INTERVAL_MS = [45000, 90000]  // how often it asks a question
 const THOUGHT_INTERVAL_MS  = [80000, 160000] // how often it shows a thought
-const REACTION_DISPLAY_MS  = 4000           // how long reaction stays visible
-const THOUGHT_DISPLAY_MS   = 3500           // how long thought stays visible
+const REACTION_DISPLAY_MS  = 4000            // how long reaction stays visible
+const THOUGHT_DISPLAY_MS   = 3500            // how long thought stays visible
+const QUIZ_INTERVAL_MS     = [180_000, 300_000] // 3–5 min between quizzes
+const QUIZ_FEEDBACK_MS     = 1_800              // how long to show correct/wrong flash
+const QUIZ_TIMEOUT_MS      = 12_000             // auto-dismiss if no answer
 
 export class Game {
   private personality: PersonalityData
@@ -49,6 +52,10 @@ export class Game {
   private mediaRecorder: MediaRecorder | null = null
   private audioChunks: Blob[] = []
   private isRecording = false
+  private quizTimer:     ReturnType<typeof setTimeout> | null = null
+  private quizAutoTimer: ReturnType<typeof setTimeout> | null = null
+  private quizContainer: HTMLElement = null!
+  private activeQuizQ:   QuizQuestion | null = null
 
   constructor(personality: PersonalityData, apiKey: string) {
     this.personality = personality
@@ -104,9 +111,11 @@ export class Game {
     // Track cursor for eye direction
     document.addEventListener('mousemove', (e) => this.trackEyes(e))
 
+    this.quizContainer = document.getElementById('quiz-bubbles')!
     this.scheduleWander()
     this.scheduleQuestion()
     this.scheduleThought()
+    this.scheduleQuiz()
     this.ageInterval = setInterval(() => this.updateHUD(), 60_000)
   }
 
@@ -114,6 +123,8 @@ export class Game {
     if (this.wanderTimer)   clearTimeout(this.wanderTimer)
     if (this.questionTimer) clearTimeout(this.questionTimer)
     if (this.thoughtTimer)  clearTimeout(this.thoughtTimer)
+    if (this.quizTimer)     clearTimeout(this.quizTimer)
+    if (this.quizAutoTimer) clearTimeout(this.quizAutoTimer)
     if (this.ageInterval)   clearInterval(this.ageInterval)
   }
 
@@ -470,6 +481,7 @@ export class Game {
   }
 
   private petCreature(): void {
+    if (this.activeQuizQ) { this.dismissQuiz(); return }
     if (this.isBusy) return
     this.setState('happy')
     this.setMouth('happy')
@@ -537,10 +549,150 @@ export class Game {
       this.errorToastEl.classList.add('hidden')
     }, 6000)
   }
+
+  // ─── Quiz ──────────────────────────────────────────────────────────────
+
+  private scheduleQuiz(): void {
+    const delay = rand(QUIZ_INTERVAL_MS[0], QUIZ_INTERVAL_MS[1])
+    this.quizTimer = setTimeout(async () => {
+      if (!this.isBusy) await this.runQuiz()
+      this.scheduleQuiz()
+    }, delay)
+  }
+
+  private async runQuiz(): Promise<void> {
+    this.isBusy = true
+    this.setState('thinking')
+    this.setMouth('thinking')
+
+    this.bubbleEl.classList.remove('hidden', 'thought')
+    this.bubbleInputAreaEl.classList.add('hidden')
+    this.bubbleReactionEl.classList.add('hidden')
+    this.bubbleTextEl.innerHTML = '<div class="thinking-dots"><span></span><span></span><span></span></div>'
+    this.positionBubble()
+
+    let question: QuizQuestion
+    try {
+      question = await generateQuizQuestion(this.apiKey, this.personality.quizProgress ?? {})
+    } catch (err) {
+      this.showError(err)
+      this.hideBubble()
+      this.setState('wandering')
+      this.isBusy = false
+      return
+    }
+
+    this.activeQuizQ = question
+
+    const promptText = question.promptType === 'reading'
+      ? 'What sound does this make?'
+      : 'What does this mean?'
+
+    this.bubbleTextEl.innerHTML =
+      `<span class="quiz-character">${question.character}</span>` +
+      `<span class="quiz-prompt">${promptText}</span>`
+    this.setState('speaking')
+    this.setMouth('curious')
+    this.positionBubble()
+
+    this.spawnAnswerBubbles(question)
+
+    this.quizAutoTimer = setTimeout(() => {
+      if (this.activeQuizQ) this.dismissQuiz()
+    }, QUIZ_TIMEOUT_MS)
+  }
+
+  private spawnAnswerBubbles(question: QuizQuestion): void {
+    this.quizContainer.innerHTML = ''
+    const allOptions = shuffle([question.correctAnswer, ...question.distractors])
+
+    const margin = 80
+    const halfW = window.innerWidth / 2
+    const halfH = window.innerHeight / 2
+    const quadrants = [
+      { minX: margin,     maxX: halfW - 80,                  minY: margin + 60, maxY: halfH - 50 },
+      { minX: halfW + 20, maxX: window.innerWidth - margin,  minY: margin + 60, maxY: halfH - 50 },
+      { minX: margin,     maxX: halfW - 80,                  minY: halfH + 20,  maxY: window.innerHeight - margin },
+      { minX: halfW + 20, maxX: window.innerWidth - margin,  minY: halfH + 20,  maxY: window.innerHeight - margin },
+    ]
+
+    allOptions.forEach((option, i) => {
+      const q = quadrants[i]
+      const x = q.minX + Math.random() * Math.max(0, q.maxX - q.minX)
+      const y = q.minY + Math.random() * Math.max(0, q.maxY - q.minY)
+
+      const el = document.createElement('button')
+      el.className = 'quiz-bubble'
+      el.textContent = option
+      el.style.left = `${x}px`
+      el.style.top  = `${y}px`
+      el.style.animationDelay = `${i * 0.4}s`
+      el.addEventListener('click', () => this.handleQuizAnswer(option, question, el))
+      this.quizContainer.appendChild(el)
+    })
+  }
+
+  private handleQuizAnswer(
+    chosen: string,
+    question: QuizQuestion,
+    chosenEl: HTMLButtonElement
+  ): void {
+    if (!this.activeQuizQ) return
+    if (this.quizAutoTimer) { clearTimeout(this.quizAutoTimer); this.quizAutoTimer = null }
+
+    this.quizContainer.querySelectorAll('.quiz-bubble').forEach(b => {
+      (b as HTMLButtonElement).disabled = true
+    })
+
+    const isCorrect = chosen === question.correctAnswer
+
+    this.personality = recordQuizAnswer(this.personality, question.character, isCorrect)
+    savePersonality(this.personality)
+
+    if (isCorrect) {
+      chosenEl.classList.add('quiz-bubble--correct')
+      this.setState('happy')
+      this.setMouth('happy')
+      this.bubbleTextEl.innerHTML =
+        `<span class="quiz-character">${question.character}</span>` +
+        `<span class="quiz-prompt quiz-prompt--success">Correct! ✓</span>`
+    } else {
+      chosenEl.classList.add('quiz-bubble--wrong')
+      this.setState('reacting')
+      this.quizContainer.querySelectorAll('.quiz-bubble').forEach(b => {
+        if (b.textContent === question.correctAnswer) b.classList.add('quiz-bubble--correct')
+      })
+      this.bubbleTextEl.innerHTML =
+        `<span class="quiz-character">${question.character}</span>` +
+        `<span class="quiz-prompt quiz-prompt--fail">It's <strong>${question.correctAnswer}</strong></span>`
+    }
+
+    setTimeout(() => this.dismissQuiz(), QUIZ_FEEDBACK_MS)
+  }
+
+  private dismissQuiz(): void {
+    this.activeQuizQ = null
+    if (this.quizAutoTimer) { clearTimeout(this.quizAutoTimer); this.quizAutoTimer = null }
+    this.quizContainer.querySelectorAll('.quiz-bubble').forEach(b => b.classList.add('quiz-bubble--dismissed'))
+    setTimeout(() => { this.quizContainer.innerHTML = '' }, 350)
+    this.hideBubble()
+    this.setState('wandering')
+    this.setMouth('neutral')
+    this.isBusy = false
+  }
 }
 
 function rand(min: number, max: number): number {
   return min + Math.random() * (max - min)
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
 }
 
 function formatAge(createdAt: number): string {

@@ -1,4 +1,4 @@
-import type { PersonalityData, PersonalityTraits, ExtractedFacts, HistoryEntry } from './types'
+import type { PersonalityData, PersonalityTraits, ExtractedFacts, HistoryEntry, QuizProgress } from './types'
 import { generateCreatureName } from './habitats'
 
 const STORAGE_KEY = 'wanderer_personality'
@@ -103,6 +103,21 @@ export function applyExtractedFacts(
   }
 
   return { ...data, facts, traits }
+}
+
+export function recordQuizAnswer(
+  data: PersonalityData,
+  character: string,
+  correct: boolean
+): PersonalityData {
+  const progress: QuizProgress = { ...(data.quizProgress ?? {}) }
+  const existing = progress[character] ?? { correct: 0, wrong: 0, lastSeen: 0 }
+  progress[character] = {
+    correct:  existing.correct + (correct ? 1 : 0),
+    wrong:    existing.wrong   + (correct ? 0 : 1),
+    lastSeen: Date.now(),
+  }
+  return { ...data, quizProgress: progress }
 }
 
 function unique(arr: string[]): string[] {

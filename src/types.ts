@@ -43,6 +43,7 @@ export interface PersonalityData {
   traits: PersonalityTraits
   facts: PersonalityFacts
   history: HistoryEntry[]
+  quizProgress?: QuizProgress
 }
 
 export type CreatureState = 'wandering' | 'idle' | 'speaking' | 'thinking' | 'happy' | 'reacting'
@@ -64,4 +65,21 @@ export interface ExtractedFacts {
   recentActivity?: string
   memories?: string[]
   traitDeltas?: Partial<PersonalityTraits>
+}
+
+export interface QuizCharacterRecord {
+  correct: number
+  wrong: number
+  lastSeen: number
+}
+
+export type QuizProgress = Record<string, QuizCharacterRecord>
+
+export interface QuizQuestion {
+  character: string
+  reading: string
+  correctAnswer: string
+  distractors: [string, string, string]
+  promptType: 'reading' | 'meaning'
+  characterType: 'hiragana' | 'kanji'
 }
